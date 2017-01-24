@@ -304,6 +304,7 @@ Msgtable[] msgtable =
     { "cos" },
     { "tan" },
     { "_sqrt", "sqrt" },
+    { "_ldexp", "ldexp" },
     { "_pow", "pow" },
     { "atan2" },
     { "rndtol" },

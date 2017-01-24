@@ -14169,14 +14169,29 @@ public:
         e = new ScopeExp(loc, mmath);
         if (e2.op == TOKfloat64 && e2.toReal() == 0.5)
         {
-            // Replace e1 ^^ 0.5 with .std.math.sqrt(x)
+            // Replace e1 ^^ 0.5 with .std.math.sqrt(e1)
             e = new CallExp(loc, new DotIdExp(loc, e, Id._sqrt), e1);
+            e = e.semantic(sc);
+            return e;
         }
-        else
+        if (e1.op == TOKfloat64 && e1.toReal() == 2.0)
         {
-            // Replace e1 ^^ e2 with .std.math.pow(e1, e2)
-            e = new CallExp(loc, new DotIdExp(loc, e, Id._pow), e1, e2);
+            // Replace 2.0 ^^ e2 for integral e2 with .std.math.ldexp(1.0, cast(int) e2)
+            Expression exponent = e2;
+            while (exponent.op == TOKcast)
+                exponent = (cast(CastExp) exponent).e1;
+            if (exponent.type.isintegral() ||
+                (exponent.op == TOKfloat64 && exponent.toReal() == cast(sinteger_t) exponent.toReal()))
+            {
+                auto one = new RealExp(loc, 1.0, e1.type);
+                exponent = exponent.castTo(sc, Type.tint32);
+                e = new CallExp(loc, new DotIdExp(loc, e, Id._ldexp), one, exponent);
+                e = e.semantic(sc);
+                return e;
+            }
         }
+        // Replace e1 ^^ e2 with .std.math.pow(e1, e2)
+        e = new CallExp(loc, new DotIdExp(loc, e, Id._pow), e1, e2);
         e = e.semantic(sc);
         return e;
     }
