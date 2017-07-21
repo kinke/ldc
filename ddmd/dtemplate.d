@@ -7224,6 +7224,13 @@ extern (C++) class TemplateInstance : ScopeDsymbol
             if (!minst.isRoot() && !minst.rootImports())
                 return false;
 
+          version(IN_LLVM)
+          {
+            // https://issues.dlang.org/show_bug.cgi?id=2500 all over again for shared
+            // Phobos lib (when compiling each module separately) starting with 2.074?
+          }
+          else
+          {
             TemplateInstance tnext = this.tnext;
             this.tnext = null;
 
@@ -7233,6 +7240,7 @@ extern (C++) class TemplateInstance : ScopeDsymbol
                 assert(!minst.isRoot());
                 return false;
             }
+          }
 
             // Do codegen because this is not included in non-root instances.
             return true;
