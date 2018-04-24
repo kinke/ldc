@@ -402,7 +402,11 @@ macro(dc src_files src_basedir d_flags output_basedir all_at_once outlist_o outl
     if(${all_at_once})
         set(renameCommand "")
         if(BUILD_LTO_LIBS)
-            set(renameCommand find ${output_basedir} -iname '*.bc' -exec mv '{}' '{}${CMAKE_C_OUTPUT_EXTENSION}' "\\\\;")
+            if(WIN32)
+                set(renameCommand find ${output_basedir} -iname '*.bc' -exec mv '{}' '{}${CMAKE_C_OUTPUT_EXTENSION}' "\;")
+            else()
+                set(renameCommand find ${output_basedir} -iname '*.bc' -exec mv '{}' '{}${CMAKE_C_OUTPUT_EXTENSION}' "\\\\;")
+            endif()
         endif()
 
         add_custom_command(
