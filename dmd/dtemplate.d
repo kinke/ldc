@@ -6181,177 +6181,6 @@ extern (C++) class TemplateInstance : ScopeDsymbol
     }
 
 
-    /***********************************************
-     * Returns true if this is not instantiated in non-root module, and
-     * is a part of non-speculative instantiatiation.
-     *
-     * Note: minst does not stabilize until semantic analysis is completed,
-     * so don't call this function during semantic analysis to return precise result.
-     */
-    final bool needsCodegen()
-    {
-        // Now -allInst is just for the backward compatibility.
-        if (global.params.allInst)
-        {
-            //printf("%s minst = %s, enclosing (%s).isNonRoot = %d\n",
-            //    toPrettyChars(), minst ? minst.toChars() : NULL,
-            //    enclosing ? enclosing.toPrettyChars() : NULL, enclosing && enclosing.inNonRoot());
-            if (enclosing)
-            {
-                /* https://issues.dlang.org/show_bug.cgi?id=14588
-                 * If the captured context is not a function
-                 * (e.g. class), the instance layout determination is guaranteed,
-                 * because the semantic/semantic2 pass will be executed
-                 * even for non-root instances.
-                 */
-                if (!enclosing.isFuncDeclaration())
-                    return true;
-
-                /* https://issues.dlang.org/show_bug.cgi?id=14834
-                 * If the captured context is a function,
-                 * this excessive instantiation may cause ODR violation, because
-                 * -allInst and others doesn't guarantee the semantic3 execution
-                 * for that function.
-                 *
-                 * If the enclosing is also an instantiated function,
-                 * we have to rely on the ancestor's needsCodegen() result.
-                 */
-                if (TemplateInstance ti = enclosing.isInstantiated())
-                    return ti.needsCodegen();
-
-                /* https://issues.dlang.org/show_bug.cgi?id=13415
-                 * If and only if the enclosing scope needs codegen,
-                 * this nested templates would also need code generation.
-                 */
-                return !enclosing.inNonRoot();
-            }
-            return true;
-        }
-
-        if (isDiscardable())
-        {
-            return false;
-        }
-
-        if (!minst)
-        {
-            // If this is a speculative instantiation,
-            // 1. do codegen if ancestors really needs codegen.
-            // 2. become non-speculative if siblings are not speculative
-
-            TemplateInstance tnext = this.tnext;
-            TemplateInstance tinst = this.tinst;
-            // At first, disconnect chain first to prevent infinite recursion.
-            this.tnext = null;
-            this.tinst = null;
-
-            // Determine necessity of tinst before tnext.
-            if (tinst && tinst.needsCodegen())
-            {
-                minst = tinst.minst; // cache result
-                assert(minst);
-                assert(minst.isRoot() || minst.rootImports());
-                return true;
-            }
-            if (tnext && (tnext.needsCodegen() || tnext.minst))
-            {
-                minst = tnext.minst; // cache result
-                assert(minst);
-                return minst.isRoot() || minst.rootImports();
-            }
-
-            // Elide codegen because this is really speculative.
-            return false;
-        }
-
-        /* Even when this is reached to the codegen pass,
-         * a non-root nested template should not generate code,
-         * due to avoid ODR violation.
-         */
-        if (enclosing && enclosing.inNonRoot())
-        {
-            if (tinst)
-            {
-                auto r = tinst.needsCodegen();
-                minst = tinst.minst; // cache result
-                return r;
-            }
-            if (tnext)
-            {
-                auto r = tnext.needsCodegen();
-                minst = tnext.minst; // cache result
-                return r;
-            }
-            return false;
-        }
-
-        if (global.params.useUnitTests)
-        {
-            // Prefer instantiations from root modules, to maximize link-ability.
-            if (minst.isRoot())
-                return true;
-
-            TemplateInstance tnext = this.tnext;
-            TemplateInstance tinst = this.tinst;
-            this.tnext = null;
-            this.tinst = null;
-
-            if (tinst && tinst.needsCodegen())
-            {
-                minst = tinst.minst; // cache result
-                assert(minst);
-                assert(minst.isRoot() || minst.rootImports());
-                return true;
-            }
-            if (tnext && tnext.needsCodegen())
-            {
-                minst = tnext.minst; // cache result
-                assert(minst);
-                assert(minst.isRoot() || minst.rootImports());
-                return true;
-            }
-
-            // https://issues.dlang.org/show_bug.cgi?id=2500 case
-            if (minst.rootImports())
-                return true;
-
-            // Elide codegen because this is not included in root instances.
-            return false;
-        }
-        else
-        {
-            // Prefer instantiations from non-root module, to minimize object code size.
-
-            /* If a TemplateInstance is ever instantiated by non-root modules,
-             * we do not have to generate code for it,
-             * because it will be generated when the non-root module is compiled.
-             *
-             * But, if the non-root 'minst' imports any root modules, it might still need codegen.
-             *
-             * The problem is if A imports B, and B imports A, and both A
-             * and B instantiate the same template, does the compilation of A
-             * or the compilation of B do the actual instantiation?
-             *
-             * See https://issues.dlang.org/show_bug.cgi?id=2500.
-             */
-            if (!minst.isRoot() && !minst.rootImports())
-                return false;
-
-            TemplateInstance tnext = this.tnext;
-            this.tnext = null;
-
-            if (tnext && !tnext.needsCodegen() && tnext.minst)
-            {
-                minst = tnext.minst; // cache result
-                assert(!minst.isRoot());
-                return false;
-            }
-
-            // Do codegen because this is not included in non-root instances.
-            return true;
-        }
-    }
-
     /**********************************************
      * Find template declaration corresponding to template instance.
      *
@@ -7309,76 +7138,35 @@ extern (C++) class TemplateInstance : ScopeDsymbol
     {
         Module mi = minst; // instantiated . inserted module
 
-        if (global.params.useUnitTests)
-        {
-            // Turn all non-root instances to speculative
-            if (mi && !mi.isRoot())
-                mi = null;
-        }
-
-        //printf("%s.appendToModuleMember() enclosing = %s mi = %s\n",
-        //    toPrettyChars(),
-        //    enclosing ? enclosing.toPrettyChars() : null,
-        //    mi ? mi.toPrettyChars() : null);
-        if (!mi || mi.isRoot())
-        {
-            /* If the instantiated module is speculative or root, insert to the
-             * member of a root module. Then:
-             *  - semantic3 pass will get called on the instance members.
-             *  - codegen pass will get a selection chance to do/skip it.
-             */
-            static Dsymbol getStrictEnclosing(TemplateInstance ti)
-            {
-                do
-                {
-                    if (ti.enclosing)
-                        return ti.enclosing;
-                    ti = ti.tempdecl.isInstantiated();
-                } while (ti);
-                return null;
-            }
-
-            Dsymbol enc = getStrictEnclosing(this);
-            // insert target is made stable by using the module
-            // where tempdecl is declared.
-            mi = (enc ? enc : tempdecl).getModule();
-            if (!mi.isRoot())
-                mi = mi.importedFrom;
-            assert(mi.isRoot());
-        }
-        else
-        {
-            /* If the instantiated module is non-root, insert to the member of the
-             * non-root module. Then:
-             *  - semantic3 pass won't be called on the instance.
-             *  - codegen pass won't reach to the instance.
-             */
-        }
-        //printf("\t-. mi = %s\n", mi.toPrettyChars());
-
-        if (memberOf is mi)     // already a member
-        {
-            debug               // make sure it really is a member
-            {
-                auto a = mi.members;
-                for (size_t i = 0; 1; ++i)
-                {
-                    assert(i != a.dim);
-                    if (this == (*a)[i])
-                        break;
-                }
-            }
+        // abort if it's not a root module
+        if (!mi || !mi.isRoot())
             return null;
+
+        // abort if a sibling has already been added
+        for (auto sibling = inst; sibling; sibling = sibling.tnext)
+            if (sibling.memberOf is mi)
+                return null;
+
+        mi.members.push(this);
+        memberOf = mi;
+
+        // will be codegen'd => make sure the primary instance gets full sema
+        if (this is inst) // primary instance
+        {
+            if (mi.semanticRun >= PASS.semantic2done)
+                Module.addDeferredSemantic2(this);
+            if (mi.semanticRun >= PASS.semantic3done)
+                Module.addDeferredSemantic3(this);
+        }
+        else if (!inst.memberOf || !inst.memberOf.isRoot())
+        {
+            //printf(".: deferredSemantic for non-root primary instance: %s\n", inst.toChars());
+            Module.addDeferredSemantic2(inst);
+            Module.addDeferredSemantic3(inst);
+            inst.memberOf = mi; // HACK to restrict to a single pass per inst
         }
 
-        Dsymbols* a = mi.members;
-        a.push(this);
-        memberOf = mi;
-        if (mi.semanticRun >= PASS.semantic2done && mi.isRoot())
-            Module.addDeferredSemantic2(this);
-        if (mi.semanticRun >= PASS.semantic3done && mi.isRoot())
-            Module.addDeferredSemantic3(this);
-        return a;
+        return mi.members;
     }
 
     /****************************************************

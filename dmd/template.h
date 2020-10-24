@@ -289,7 +289,9 @@ public:
     Identifier *getIdent();
     hash_t toHash();
 
+#if !IN_LLVM
     bool needsCodegen();
+#endif
 
     TemplateInstance *isTemplateInstance() { return this; }
     void accept(Visitor *v) { v->visit(this); }

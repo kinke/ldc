@@ -52,6 +52,9 @@ LLGlobalVariable* IrStruct::getTypeInfoSymbol(bool define) {
                              getTypeInfoStructMemType(), irMangle, false);
 
     emitTypeInfoMetadata(typeInfo, aggrdecl->type);
+
+    if (!define && DtoIsTemplateInstance(aggrdecl))
+      define = true;
   }
 
   if (define) {

@@ -56,9 +56,7 @@
 #include <cassert>
 #include <cstdio>
 
-// defined in dmd/typinf.d:
-void genTypeInfo(Loc loc, Type *torig, Scope *sc);
-bool builtinTypeInfo(Type *t);
+void genTypeInfo(Loc loc, Type *torig, Scope *sc); // in dmd/typinf.d
 
 TypeInfoDeclaration *getOrCreateTypeInfoDeclaration(const Loc &loc, Type *forType) {
   IF_LOG Logger::println("getOrCreateTypeInfoDeclaration(): %s",
@@ -299,7 +297,7 @@ public:
     RTTIBuilder b(getInterfaceTypeInfoType());
 
     // TypeInfo base
-    b.push_classinfo(tc->sym);
+    b.push_typeinfo(tc);
 
     // finish
     b.finalize(gvar);
@@ -434,20 +432,22 @@ void buildTypeInfo(TypeInfoDeclaration *decl) {
     Logger::println("typeinfo mangle: %s", mangled);
   }
 
-  // Only declare the symbol if it isn't yet, otherwise the subtype of
-  // built-in TypeInfos (rt.typeinfo.*) may clash with the base type when
-  // compiling the rt.typeinfo.* modules.
+  // Only declare the symbol if it isn't yet, otherwise the init symbol of
+  // built-in TypeInfos (in rt.util.typeinfo) may clash with base-typed
+  // forward declarations when compiling the rt.util.typeinfo unittests.
   const auto irMangle = getIRMangledVarName(mangled, LINKd);
   LLGlobalVariable *gvar = gIR->module.getGlobalVariable(irMangle);
-  if (!gvar) {
+  if (gvar) {
+    assert(builtinTypeInfo(forType));
+  } else {
     LLType *type = DtoType(decl->type)->getPointerElementType();
     // We need to keep the symbol mutable as the type is not declared as
     // immutable on the D side, and e.g. synchronized() can be used on the
     // implicit monitor.
     gvar = declareGlobal(decl->loc, gIR->module, type, irMangle, false);
-
-    emitTypeInfoMetadata(gvar, forType);
   }
+
+  emitTypeInfoMetadata(gvar, forType);
 
   IrGlobal *irg = getIrGlobal(decl, true);
   irg->value = gvar;
@@ -513,10 +513,10 @@ LLGlobalVariable *DtoResolveTypeInfo(TypeInfoDeclaration *tid) {
   assert(!gIR->dcomputetarget);
 
   if (!tid->ir->isResolved()) {
-    tid->ir->setResolved();
-
     DeclareOrDefineVisitor v;
     tid->accept(&v);
+
+    tid->ir->setResolved();
   }
 
   return llvm::cast<LLGlobalVariable>(getIrValue(tid));

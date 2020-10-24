@@ -323,12 +323,6 @@ public:
       return;
     }
 
-    // FIXME: This is #673 all over again.
-    if (!decl->needsCodegen()) {
-      Logger::println("Does not need codegen, skipping.");
-      return;
-    }
-
     if (irs->dcomputetarget && (decl->tempdecl == Type::rtinfo ||
                                 decl->tempdecl == Type::rtinfoImpl)) {
       // Emitting object.RTInfo(Impl) template instantiations in dcompute

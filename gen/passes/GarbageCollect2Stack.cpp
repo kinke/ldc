@@ -582,12 +582,11 @@ llvm::Type *Analysis::getTypeFor(Value *typeinfo) const {
     return nullptr;
   }
 
-  auto md = llvm::dyn_cast<llvm::ValueAsMetadata>(
-              node->getOperand(TD_TypeInfo).get());
+  auto md = llvm::dyn_cast_or_null<llvm::ValueAsMetadata>(
+      node->getOperand(TD_TypeInfo).get());
   if (md == nullptr || md->getValue()->stripPointerCasts() != ti_global) {
     return nullptr;
   }
-
 
   return llvm::cast<llvm::ValueAsMetadata>(node->getOperand(TD_Type))
       ->getType();

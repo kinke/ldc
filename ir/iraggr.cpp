@@ -55,12 +55,24 @@ LLConstant *IrAggr::getInitSymbol(bool define) {
   if (!init) {
     const auto irMangle = getIRMangledInitSymbolName(aggrdecl);
 
-    auto initGlobal =
-        declareGlobal(aggrdecl->loc, gIR->module, getLLStructType(), irMangle,
-                      /*isConstant=*/true);
-    initGlobal->setAlignment(LLMaybeAlign(DtoAlignment(type)));
+    // Only declare the symbol if it isn't yet, otherwise the init symbol of
+    // built-in TypeInfos (in rt.util.typeinfo) may clash with base-typed
+    // forward declarations when compiling the rt.util.typeinfo unittests.
+    auto initGlobal = gIR->module.getGlobalVariable(irMangle);
+    if (initGlobal) {
+      assert(aggrdecl->isClassDeclaration() &&
+             llvm::StringRef(irMangle).contains("TypeInfo_"));
+    } else {
+      initGlobal =
+          declareGlobal(aggrdecl->loc, gIR->module, getLLStructType(), irMangle,
+                        /*isConstant=*/true);
+      initGlobal->setAlignment(LLMaybeAlign(DtoAlignment(type)));
+    }
 
     init = initGlobal;
+
+    if (!define && DtoIsTemplateInstance(aggrdecl))
+      define = true;
   }
 
   if (define) {
