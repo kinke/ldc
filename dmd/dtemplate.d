@@ -6216,11 +6216,6 @@ extern (C++) class TemplateInstance : ScopeDsymbol
      */
     final bool needsCodegen()
     {
-version (IN_LLVM)
-{
-        assert(!global.params.linkonceTemplates);
-}
-
         if (!minst)
         {
             // If this is a speculative instantiation,
@@ -7354,25 +7349,6 @@ version (IN_LLVM)
     extern (D) final Dsymbols* appendToModuleMember()
     {
         Module mi = minst; // instantiated . inserted module
-
-version (IN_LLVM)
-{
-        if (global.params.linkonceTemplates)
-        {
-            // Skip if it's not a root module.
-            if (!mi || !mi.isRoot())
-                return null;
-
-            // Skip if the primary instance has already been assigned to a root
-            // module.
-            if (inst.memberOf)
-                return null;
-
-            // Okay, this is the primary instance to be assigned to a root
-            // module and getting semantic3.
-            assert(this is inst);
-        }
-}
 
         if (global.params.useUnitTests)
         {
